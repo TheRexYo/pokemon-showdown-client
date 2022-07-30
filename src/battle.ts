@@ -811,8 +811,7 @@ export class Side {
 		return poke;
 	}
 
-	switchIn(pokemon: Pokemon, slot?: number) {
-		if (slot === undefined) slot = pokemon.slot;
+	switchIn(pokemon: Pokemon, slot = pokemon.slot) {
 		this.active[slot] = pokemon;
 		pokemon.slot = slot;
 		pokemon.clearVolatile();
@@ -867,17 +866,16 @@ export class Side {
 		}
 		this.battle.scene.animSummon(pokemon, slot, true);
 	}
-	switchOut(pokemon: Pokemon, slot = pokemon.slot) {
+	switchOut(pokemon: Pokemon, kwArgs: KWArgs, slot = pokemon.slot) {
 		if (pokemon.lastMove !== 'batonpass' && pokemon.lastMove !== 'zbatonpass') {
 			pokemon.clearVolatile();
 		} else {
 			pokemon.removeVolatile('transform' as ID);
 			pokemon.removeVolatile('formechange' as ID);
 		}
-		if (pokemon.lastMove === 'uturn' || pokemon.lastMove === 'voltswitch') {
-			this.battle.log(['switchout', pokemon.ident], {from: pokemon.lastMove});
-		} else if (pokemon.lastMove !== 'batonpass' && pokemon.lastMove !== 'zbatonpass') {
-			this.battle.log(['switchout', pokemon.ident]);
+		const effect = Dex.getEffect(kwArgs.from);
+		if (!['batonpass', 'zbatonpass', 'teleport'].includes(effect.id)) {
+			this.battle.log(['switchout', pokemon.ident], {from: effect.id});
 		}
 		pokemon.statusData.toxicTurns = 0;
 		if (this.battle.gen === 5) pokemon.statusData.sleepTurns = 0;
@@ -1065,6 +1063,7 @@ export class Battle {
 	tier = '';
 	gameType: 'singles' | 'doubles' | 'triples' | 'multi' | 'freeforall' = 'singles';
 	rated: string | boolean = false;
+	rules: {[ruleName: string]: 1 | 0} = {};
 	isBlitz = false;
 	endLastTurnPending = false;
 	totalTimeLeft = 0;
@@ -2204,10 +2203,12 @@ export class Battle {
 			let poke = this.getPokemon(args[1])!;
 			let item = Dex.items.get(args[2]);
 			let effect = Dex.getEffect(kwArgs.from);
-			poke.item = '';
-			poke.itemEffect = '';
-			poke.prevItem = item.name;
-			poke.prevItemEffect = '';
+			if (this.gen > 4 || effect.id !== 'knockoff') {
+				poke.item = '';
+				poke.itemEffect = '';
+				poke.prevItem = item.name;
+				poke.prevItemEffect = '';
+			}
 			poke.removeVolatile('airballoon' as ID);
 			poke.addVolatile('itemremoved' as ID);
 			if (kwArgs.eat) {
@@ -2223,7 +2224,11 @@ export class Battle {
 					poke.prevItemEffect = 'flung';
 					break;
 				case 'knockoff':
-					poke.prevItemEffect = 'knocked off';
+					if (this.gen <= 4) {
+						poke.itemEffect = 'knocked off';
+					} else {
+						poke.prevItemEffect = 'knocked off';
+					}
 					this.scene.runOtherAnim('itemoff' as ID, [poke]);
 					this.scene.resultAnim(poke, 'Item knocked off', 'neutral');
 					break;
@@ -2366,7 +2371,8 @@ export class Battle {
 			const pokemon = tpoke;
 			const shiny = tpoke.shiny;
 			const gender = tpoke.gender;
-			poke.addVolatile('transform' as ID, pokemon, shiny, gender);
+			const level = tpoke.level;
+			poke.addVolatile('transform' as ID, pokemon, shiny, gender, level);
 			poke.addVolatile('formechange' as ID, speciesForme);
 			for (const trackedMove of tpoke.moveTrack) {
 				poke.rememberMove(trackedMove[0], 0);
@@ -3282,6 +3288,7 @@ export class Battle {
 				this.messageFadeTime = 40;
 				this.isBlitz = true;
 			}
+			this.rules[ruleName] = 1;
 			this.log(args);
 			break;
 		}
@@ -3435,7 +3442,7 @@ export class Battle {
 			poke.removeVolatile('itemremoved' as ID);
 			if (args[0] === 'switch') {
 				if (poke.side.active[slot]) {
-					poke.side.switchOut(poke.side.active[slot]!);
+					poke.side.switchOut(poke.side.active[slot]!, kwArgs);
 				}
 				poke.side.switchIn(poke);
 			} else if (args[0] === 'replace') {
