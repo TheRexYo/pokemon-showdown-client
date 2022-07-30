@@ -60,7 +60,7 @@ case 'test-only':
 
 	break;
 case '':
-	break;
+	break;	
 default:
 	console.log(`Unrecognized command ${process.argv[2]}`);
 	process.exit();
